@@ -45,9 +45,15 @@ The experiment is a **2×2 factorial engineering comparison**:
 | **Test 1 vs Test 3** | Default model parameters | **Validation protocol:** one 80:20 split versus five-fold CV |
 | **Test 1 vs Test 2** | Same 80:20 split | **Hyperparameter tuning:** defaults versus Optuna |
 | **Test 3 vs Test 4** | Same five-fold partitioning | **Hyperparameter tuning under CV:** defaults versus Optuna |
-| **Test 1 vs Test 4** | Same cleaned dataset and target definitions | Full change from the least rigorous to the most rigorous configuration |
+| **Test 1 vs Test 4** | Same cleaned dataset and target definitions | Full change from default models on one hold-out split to tuned models scored with five-fold CV |
 
 For Tests 2 and 4, every tunable model receives **50 Optuna trials per target** using a seeded Tree-structured Parzen Estimator and a median pruner. Test 2 tunes only inside the training partition; its 20% test partition remains untouched until final evaluation.
+
+> **Test 4 is not nested cross-validation.** Its Optuna objective (`cross_val_score` with
+> `KFold(n_splits=5, shuffle=True, random_state=42)`) uses the same five folds that are then used to
+> report each tuned model's score. Hyperparameters are therefore selected on the folds that measure
+> them, so Test 4 scores are optimistically biased estimates of generalisation. An unbiased estimate
+> needs nested cross-validation (tuning inside each outer training fold), which has not been run.
 
 The 17-model search space contains:
 
@@ -87,8 +93,8 @@ This seed controls data splitting, shuffled folds, supported estimators and Optu
 ### Environment setup with Conda
 
 ```bash
-git clone https://github.com/NikunjGit-config-Js/<repository-name>.git
-cd <repository-name>
+git clone https://github.com/NikunjGit-config-Js/Validation-aware-fdt-machine-learning.git
+cd Validation-aware-fdt-machine-learning
 
 conda create --name fdt-validation python=3.10 -y
 conda activate fdt-validation
@@ -101,24 +107,24 @@ python -m pip install \
 
 ### Execution order
 
-The notebooks were originally developed in Google Colab and contain `/content/` path constants. For local execution, replace those constants with the repository-relative paths shown below:
+The notebooks were originally developed in Google Colab and contain `/content/` path constants (and a `!pip install optuna` cell). For local execution, replace those constants with the repository-relative paths shown below; the file names match this repository exactly:
 
 ```python
 from pathlib import Path
 
-RAW_CSV = Path("../data/raw/final_Data_All_Excipients.csv")
-PREPROCESSED_CSV = Path("../data/processed/preprocessed.csv")
-RESULTS_DIR = Path("../results")
-FIGURES_DIR = Path("../figures")
+RAW_CSV = Path("../Data/final Data All Exipients.csv")
+PREPROCESSED_CSV = Path("../Data/preprocessed.csv")
+RESULTS_DIR = Path("../Results")
+FIGURES_DIR = Path("../Figures")
 ```
 
-Then execute the notebooks from the `notebooks/` directory:
+Then execute the notebooks from the `Notebooks/` directory:
 
 ```bash
 mkdir -p executed_notebooks
-cd notebooks
+cd Notebooks
 
-# Producer: creates data/processed/preprocessed.csv
+# Producer: creates Data/preprocessed.csv
 jupyter nbconvert --to notebook --execute \
   01_EDA_and_Anomaly_Detection.ipynb \
   --output-dir ../executed_notebooks \
@@ -209,7 +215,9 @@ The matrix below reports **R² / RMSE** for the best model under each primary pr
 
 > **Metric convention:** fold-mean scores are used in the table to match the reference study's reporting convention. Actual-versus-predicted CV figures use pooled out-of-fold predictions, so their R² and RMSE can differ slightly without representing a contradiction.
 
-![Best-model progression across the four protocols](figures/fig_progression.png)
+> **Test 4 caveat:** because Test 4 tunes on the folds it reports (see above), its scores are optimistically biased. Small margins over the reference study, such as 0.763 versus 0.760 R² for disintegration time, are within that bias and should not be read as an improvement.
+
+![Best-model progression across the four protocols](Figures/fig_progression.png)
 
 ### Breakthrough finding 1 — Friability is protocol-dependent
 
@@ -231,7 +239,7 @@ A like-for-like sensitivity analysis applied the reference study's exact scoring
 
 The reference result is therefore reproducible under stronger validation—but only inside the normal pharmaceutical range. The analysis proves that the published friability performance is **population- and protocol-contingent**, not universally valid for catastrophic tablet failure.
 
-![Friability sensitivity analysis](figures/fig_friability_sensitivity.png)
+![Friability sensitivity analysis](Figures/fig_friability_sensitivity.png)
 
 ### Breakthrough finding 2 — Water absorption is zero-inflated
 
@@ -246,7 +254,7 @@ The tuned Extra Trees model separates the zero and measured populations extremel
 
 The first score describes the combined zero-separation and regression task. The second is the honest estimate of continuous regression performance among formulations with an actual recorded measurement.
 
-![Water-absorption zero-inflation analysis](figures/fig_water_zero_inflation.png)
+![Water-absorption zero-inflation analysis](Figures/fig_water_zero_inflation.png)
 
 ### Why Extra Trees dominated the stable targets
 
@@ -265,38 +273,25 @@ Consequently, Extra Trees was the best model for:
 ```text
 .
 ├── README.md
-├── data/
-│   ├── raw/
-│   │   └── final_Data_All_Excipients.csv
-│   └── processed/
-│       └── preprocessed.csv
-├── notebooks/
+├── Data/
+│   ├── final Data All Exipients.csv      # raw Dataverse file
+│   └── preprocessed.csv                  # written by notebook 01
+├── Notebooks/
 │   ├── 01_EDA_and_Anomaly_Detection.ipynb
 │   ├── 02_Test_1_Baseline_Holdout.ipynb
 │   ├── 03_Test_2_Holdout_Optuna.ipynb
 │   ├── 04_Test_3_FiveFold_CV.ipynb
 │   └── 05_Test_4_FiveFold_CV_Optuna.ipynb
-├── results/
-│   ├── results_test1_baseline.csv
-│   ├── results_test2_optuna.csv
-│   ├── results_test2_optuna_trials.csv
-│   ├── results_test3_cv.csv
-│   ├── results_test4_cv_optuna.csv
-│   ├── predictions_all_tests.csv
-│   ├── BEST_overall_model.csv
-│   └── COMPARISON_vs_paper.csv
-├── figures/
-│   ├── fig_pipeline.png
-│   ├── fig_progression.png
-│   ├── fig_friability_sensitivity.png
-│   ├── fig_water_zero_inflation.png
-│   └── fig_vs_reference.png
-└── reports/
-    ├── FDT_Thesis_Nikunj_Mathur.pdf
-    └── FDT_Explanation_and_Defence_Manual.pdf
+├── Results/
+│   └── predictions_all_tests.csv
+└── Figures/
+    ├── fig_pipeline.png, fig_targets.png, fig_progression.png, fig_all_tests_grid.png
+    ├── fig_error_curves.png, fig_vs_reference.png
+    ├── fig_friability_sensitivity.png, fig_water_zero_inflation.png
+    └── fig_test1_inference.png … fig_test4_inference.png
 ```
 
-The repository's primary artifacts are deterministic result tables, Optuna trial histories, pooled out-of-fold predictions and diagnostic figures. Serialized estimators are intentionally not presented as universally deployable models: their valid domain depends on the target population and validation scope documented below.
+The repository contains the pooled out-of-fold and hold-out predictions (`Results/predictions_all_tests.csv`), the executed notebooks and the diagnostic figures. The per-test result tables (`results_test*.csv`), Optuna trial histories and the thesis PDFs written during the original runs are not included in this repository, so the values in the results matrix above can only be checked against the executed notebook outputs. Serialized estimators are intentionally not presented as universally deployable models: their valid domain depends on the target population and validation scope documented below.
 
 ### Limitations
 
